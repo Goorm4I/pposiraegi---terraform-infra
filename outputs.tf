@@ -1,14 +1,15 @@
-output "alb_dns_name" {
-  description = "ALB DNS Name"
-  value       = aws_lb.app_alb.dns_name
+output "alb_dns" {
+  value = aws_lb.alb.dns_name
 }
 
-output "bastion_public_ip" {
-  description = "Bastion Public IP"
-  value       = aws_instance.bastion.public_ip
+output "bastion_ip" {
+  value = aws_instance.bastion.public_ip
+}
+
+output "backend_private_ip" {
+  value = aws_instance.backend.private_ip
 }
 
 output "rds_endpoint" {
-  description = "RDS Endpoint"
-  value       = aws_db_instance.main.address
+  value = aws_db_instance.db.endpoint
 }
