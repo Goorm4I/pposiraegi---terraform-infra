@@ -9,37 +9,10 @@ Backend EC2는 RDS 데이터베이스와 통신한다.
 
 ---
 
-# Architecture Diagram
+# Architecture 
 
-```
-Users
-  │
-  │ HTTPS
-  ▼
-        ┌───────────────────────────────┐
-        │              VPC              │
-        │          10.0.0.0/16          │
-        │                               │
-        │   ┌─────────────┐ ┌─────────────┐
-        │   │    AZ-A     │ │    AZ-B     │
-        │   │             │ │             │
-        │   │ Public Sub  │ │ Public Sub  │
-        │   │   ALB       │ │   ALB       │
-        │   │             │ │             │
-        │   │ Public Sub  │ │ Public Sub  │
-        │   │  Bastion    │ │   (Future)  │
-        │   │             │ │    NAT      │
-        │   │             │ │             │
-        │   │ Private Sub │ │ Private Sub │
-        │   │ Backend EC2 │ │ Backend EC2 │
-        │   │             │ │             │
-        │   └─────────────┘ └─────────────┘
-        │               │
-        │               ▼
-        │        RDS (Multi-AZ)
-        │
-        └───────────────────────────────┘
-```
+<img width="1024" height="1536" alt="ChatGPT Image 2026년 3월 4일 오후 02_40_44" src="https://github.com/user-attachments/assets/7a6148fd-86ce-49ec-a46e-2619421b5fd7" />
+
 
 ---
 
