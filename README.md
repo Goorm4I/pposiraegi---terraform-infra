@@ -12,7 +12,8 @@ Backend EC2는 Private Subnet의 RDS(MySQL)와 통신한다.
 
 ## Architecture Diagram
 
-<img width="1681" height="1171" alt="aws-architecture-v3 drawio" src="https://github.com/user-attachments/assets/023892ea-57c3-47c5-86cf-8a9ea8715417" />
+<img width="1693" height="1292" alt="aws-architecture-v4 drawio" src="https://github.com/user-attachments/assets/11af8902-b8db-4ec9-a35e-b2fafd03bce5" />
+
 
 ---
 
