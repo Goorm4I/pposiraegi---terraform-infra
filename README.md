@@ -53,6 +53,28 @@ CloudFront
 
 ---
 
+### 🔐 Security Group 트래픽 흐름
+```
+인터넷 (0.0.0.0/0)
+  │
+  │ 80 (HTTP) - CloudFront IP 대역만 허용
+  ▼
+[alb-sg] ALB
+  │
+  │ 8080 (API) - ALB에서 오는 것만
+  ▼
+[app-sg] Backend EC2 ◄── 22 (SSH) - Bastion에서만
+  │
+  │ 5432 (PostgreSQL) - EC2에서 오는 것만
+  ▼
+[rds-sg] RDS
+  
+[redis-sg] Redis ◄── 6379 - EC2에서만
+  
+[bastion-sg] Bastion ◄── 22 (SSH) - 내 IP만
+```
+
+
 ### 🔐 Security Group 규칙
 
 | SG 이름 | 인바운드 | 허용 출처 |
