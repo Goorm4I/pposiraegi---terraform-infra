@@ -17,209 +17,97 @@ Backend EC2는 Private Subnet의 RDS(MySQL)와 통신한다.
 
 ---
 
-# 📡 Traffic Flow
+## 🏗️ 인프라 구조 (Terraform / AWS)
 
-## User Traffic
+### 📦 리소스 목록
 
+| 리소스 | 개수 | 설명 |
+|--------|------|------|
+| VPC | 1 | 10.0.0.0/16 |
+| Public Subnet | 4 | ALB(x2), Bastion(x1), NAT용(x1, 비활성) |
+| Private Subnet | 2 | Backend EC2(x1), RDS Multi-AZ(x1) |
+| Internet Gateway | 1 | Public 서브넷 인터넷 연결 |
+| NAT Gateway | 0 | 현재 비활성 (주석 해제 시 활성화) |
+| EC2 | 2 | Bastion, Backend |
+| ALB | 1 | Backend EC2 앞단 로드밸런서 |
+| RDS (MySQL) | 1 | Multi-AZ, Private 서브넷 |
+| S3 | 1 | 프론트엔드 정적 파일 호스팅 |
+| CloudFront | 1 | CDN, S3+ALB 통합 진입점 |
+| Security Group | 4 | ALB / Bastion / App / RDS |
+
+---
+
+### 🔀 트래픽 흐름
 ```
-User
- │
- ▼
-Route 53 (pposiragi.cloud)
- │
- ▼
+사용자
+  │
+  ▼
 CloudFront
- ├── /* ──────────────────▶ S3 (정적 프론트엔드, OAC)
- └── /api/* ──────────────▶ Internet Gateway
-                                │
-                                ▼
-                           ALB (Public Subnet, port 80)
-                                │
-                                ▼
-                           Backend EC2 (Private Subnet, port 8080)
-                                │
-                                ▼
-                           RDS MySQL (Private Subnet, Multi-AZ)
-```
-
-## Developer Access
-
-개발자는 Bastion Host를 통해서만 Private EC2에 SSH 접속할 수 있다.  
-Bastion은 등록된 관리자 IP(`my_ip`)에서만 SSH를 허용한다.
-
-```
-Developer (my_ip)
- │
- ▼
-Internet Gateway
- │
- ▼
-Bastion Host (Public Subnet C, port 22)
- │
- ▼
-Backend EC2 (Private Subnet A, port 22)
+  ├─ /api/*  ──────────────► ALB ──► Backend EC2 (Private)
+  │                                        │
+  │                                        ▼
+  │                                    RDS MySQL (Private)
+  │
+  └─ /*  ──────────────────► S3 (프론트엔드 정적 파일)
 ```
 
 ---
 
-# 🌐 Network Design
+### 🔐 Security Group 규칙
 
-## VPC
-
-| Resource | Value |
-|---|---|
-| VPC CIDR | 10.0.0.0/16 |
-| Region | ap-northeast-2 (Seoul) |
-| DNS Support | ✅ 활성화 |
-| DNS Hostnames | ✅ 활성화 |
-
----
-
-## Subnet Design
-
-| Subnet | CIDR | AZ | Purpose |
-|---|---|---|---|
-| Public-A | 10.0.1.0/24 | AZ-a | ALB |
-| Public-B | 10.0.2.0/24 | AZ-b | ALB (이중화) |
-| Public-C | 10.0.3.0/24 | AZ-a | Bastion Host |
-| Public-D | 10.0.4.0/24 | AZ-b | NAT Gateway 예정 (현재 비활성) |
-| Private-A | 10.0.11.0/24 | AZ-a | Backend EC2, RDS Primary |
-| Private-B | 10.0.12.0/24 | AZ-b | RDS Standby (Multi-AZ) |
-
-### 왜 Public 서브넷을 4개로 구성했나?
-
-- **Public-A / Public-B**: ALB는 반드시 2개 이상의 AZ에 걸쳐 있어야 한다. 따라서 각 AZ에 퍼블릭 서브넷을 하나씩 배치해 ALB 이중화를 구성했다.
-- **Public-C**: Bastion Host 전용 서브넷. ALB와 Bastion을 분리해 보안 관리와 트래픽 역할을 명확히 구분했다.
-- **Public-D**: 추후 NAT Gateway 활성화를 고려해 미리 확보해둔 서브넷이다.
+| SG 이름 | 인바운드 | 허용 출처 |
+|---------|---------|----------|
+| alb-sg | 80 (HTTP) | 0.0.0.0/0 |
+| bastion-sg | 22 (SSH) | 내 IP만 |
+| app-sg | 8080 (API) | alb-sg |
+| app-sg | 22 (SSH) | bastion-sg |
+| rds-sg | 3306 (MySQL) | app-sg |
 
 ---
 
-# 🔐 Security Design
+### 🌐 주요 엔드포인트
 
-## Bastion Host란?
-
-Bastion Host는 외부에서 Private 네트워크 내부로 접근하기 위한 **중간 경유 서버**다.  
-Backend EC2는 Private Subnet에 있어 인터넷에서 직접 접근이 불가능하다.  
-따라서 개발자는 반드시 Bastion을 통해서만 내부 서버에 SSH 접속할 수 있다.  
-Bastion 자체도 등록된 관리자 IP에서만 접근 가능하도록 Security Group으로 제한한다.
-
-## ALB Security Group
-
-| Port | Source | 설명 |
-|---|---|---|
-| 80 | CloudFront IP 대역 (Prefix List) | CloudFront를 통한 요청만 허용, 직접 접근 차단 |
-
-> ALB를 `0.0.0.0/0`으로 열지 않고 AWS 관리형 CloudFront Prefix List로 제한해 직접 접근을 차단한다.
-
-## Bastion Security Group
-
-| Port | Source | 설명 |
-|---|---|---|
-| 22 | my_ip (관리자 IP) | 등록된 관리자 IP에서만 SSH 허용 |
-
-## Backend Security Group
-
-| Port | Source | 설명 |
-|---|---|---|
-| 8080 | ALB Security Group | ALB에서 오는 트래픽만 허용 |
-| 22 | Bastion Security Group | Bastion을 통한 SSH만 허용 |
-
-## RDS Security Group
-
-| Port | Source | 설명 |
-|---|---|---|
-| 3306 | Backend Security Group | Backend EC2에서만 DB 접근 허용 |
+| 항목 | 값 | 설명 |
+|------|-----|------|
+| 프론트엔드 URL | `https://<cloudfront-domain>` | CloudFront 도메인 (`terraform output cloudfront_url`) |
+| 백엔드 API URL | `http://<alb-dns>/api/v1/...` | ALB DNS (`terraform output alb_dns`) |
+| S3 버킷명 | `pposiraegi-frontend-xxxx` | 프론트 빌드 파일 업로드 대상 |
+| RDS 엔드포인트 | Private 접근만 가능 | `terraform output rds_endpoint` |
+| Bastion IP | Public IP | `terraform output bastion_ip` |
 
 ---
 
-# 🌍 CloudFront & S3
+### 🚀 배포 방법
 
-| 항목 | 내용 |
-|---|---|
-| 기본 오리진 (`/*`) | S3 (정적 프론트엔드) |
-| API 오리진 (`/api/*`) | ALB |
-| S3 접근 방식 | OAC (Origin Access Control) — CloudFront만 접근 가능, 퍼블릭 차단 |
-| HTTPS | redirect-to-https 강제 적용 |
-| SPA 라우팅 | 403/404 → index.html 리다이렉트 |
-| 커스텀 헤더 | `X-CloudFront-Secret` — CloudFront → ALB 직접 접근 이중 차단 |
-
----
-
-# 🗄 Database Architecture
-
-RDS MySQL은 Multi-AZ 구성으로 고가용성을 확보한다.
-
-```
-Private Subnet A (AZ-a)
- └── RDS Primary (읽기/쓰기)
-        │ 자동 복제
-        ▼
-Private Subnet B (AZ-b)
- └── RDS Standby (장애 시 자동 Failover)
-```
-
-Primary 장애 발생 시 Standby가 자동으로 Primary로 승격된다.  
-Standby는 평상시 읽기/쓰기 불가 — Failover 전용이다.
-
-| 항목 | 값 |
-|---|---|
-| Engine | MySQL |
-| Instance Class | db.t3.micro |
-| Storage | 20GB |
-| Multi-AZ | ✅ 활성화 |
-| Subnet Group | private_a + private_b |
-
----
-
-# ⚙ Infrastructure Components
-
-| Component | Description |
-|---|---|
-| Route 53 | DNS — pposiragi.cloud → CloudFront Alias |
-| ACM | HTTPS 인증서 (us-east-1, CloudFront 전용) |
-| CloudFront | 글로벌 CDN, S3/ALB 오리진 분기 |
-| S3 | 정적 프론트엔드 파일 (OAC, 퍼블릭 차단) |
-| VPC | 전체 네트워크 환경 |
-| Internet Gateway | VPC ↔ 인터넷 연결 |
-| Public Subnets | ALB, Bastion 배치 (4개) |
-| Private Subnets | Backend EC2, RDS 배치 (2개) |
-| ALB | CloudFront에서 오는 트래픽을 Backend EC2로 분산 |
-| Bastion Host | 개발자 SSH 접근용 경유 서버 |
-| Backend EC2 | 애플리케이션 서버 |
-| RDS MySQL | 데이터베이스, Multi-AZ |
-| NAT Gateway | Private EC2 아웃바운드 인터넷 (현재 비활성, 필요 시 주석 해제) |
-
----
-
-# 🚀 Terraform Deployment
-
+**1. 인프라 생성**
 ```bash
-# 1. terraform.tfvars에서 아래 값 반드시 변경
-#    - db_password
-#    - cloudfront_secret
-#    - domain_name (현재: pposiragi.cloud)
-
-# 2. 초기화 (처음 한 번만)
 terraform init
-
-# 3. 변경사항 확인
-terraform plan
-
-# 4. 배포
 terraform apply
 ```
 
-<br>
+**2. 프론트엔드 배포**
+```bash
+npm run build
+aws s3 sync ./build s3://$(terraform output -raw s3_bucket_name) --profile goorm --delete
+```
+
+**3. Backend EC2**
+- `terraform apply` 시 `user_data.sh` 자동 실행
+- GitHub 레포 클론 → `docker-compose up -d` 자동 실행
+- CORS 허용 오리진은 CloudFront 도메인으로 자동 설정
+
+**4. 인프라 삭제**
+```bash
+terraform destroy
+```
 
 ---
 
-# 📌 Key Architecture Characteristics
+### 📁 파일 구성
 
-- **Route 53 + CloudFront**: 단일 도메인 진입점, HTTPS 강제
-- **S3 OAC**: 퍼블릭 차단, CloudFront만 접근 가능
-- **ALB CloudFront Prefix List**: ALB 직접 접근 차단
-- **Multi-AZ Architecture**: ALB, RDS 모두 다중 AZ 구성
-- **Bastion 기반 Secure SSH Access**: Private EC2 직접 접근 불가
-- **Private Backend Network**: EC2, RDS 모두 Private Subnet 격리
-- **NAT Gateway 확장 가능**: 현재 비활성, 필요 시 주석 해제로 활성화
-- **Terraform IaC**: 전체 인프라 코드화
+| 파일 | 설명 |
+|------|------|
+| `main.tf` | 전체 AWS 리소스 정의 |
+| `variables.tf` | 변수 선언 및 기본값 |
+| `outputs.tf` | 배포 후 출력값 (URL, IP 등) |
+| `user_data.sh` | EC2 부팅 시 자동 실행 스크립트 |
