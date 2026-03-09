@@ -9,7 +9,7 @@ variable "aws_profile" {
 
 variable "region" {
   description = "AWS region"
-  default     = "ap-southeast-2"
+  default     = "ap-northeast-2"
 }
 
 variable "project_name" {
@@ -26,14 +26,34 @@ variable "vpc_cidr" {
   default     = "10.0.0.0/16"
 }
 
-variable "public_subnet_a_cidr" {
-  description = "Public subnet A CIDR (AZ-a)"
+variable "public_subnet_a" {
+  description = "Public subnet A CIDR (ALB용)"
   default     = "10.0.1.0/24"
 }
 
-variable "public_subnet_b_cidr" {
-  description = "Public subnet B CIDR (AZ-b)"
+variable "public_subnet_b" {
+  description = "Public subnet B CIDR (ALB용)"
   default     = "10.0.2.0/24"
+}
+
+variable "public_subnet_c" {
+  description = "Public subnet C CIDR (Bastion용)"
+  default     = "10.0.3.0/24"
+}
+
+variable "public_subnet_d" {
+  description = "Public subnet D CIDR (NAT Gateway용, 현재 비활성)"
+  default     = "10.0.4.0/24"
+}
+
+variable "private_subnet_a" {
+  description = "Private subnet A CIDR (Backend EC2용)"
+  default     = "10.0.11.0/24"
+}
+
+variable "private_subnet_b" {
+  description = "Private subnet B CIDR (RDS / Redis Multi-AZ용)"
+  default     = "10.0.12.0/24"
 }
 
 ############################################
@@ -41,8 +61,8 @@ variable "public_subnet_b_cidr" {
 ############################################
 
 variable "ec2_ami" {
-  description = "AMI for EC2 (Amazon Linux 2023, ap-southeast-2)"
-  default     = "ami-0ac4101c751eae35f"
+  description = "AMI for EC2 (Amazon Linux 2023, ap-northeast-2)"
+  default     = "ami-0c9c942bd7bf113a2"
 }
 
 variable "ec2_instance_type" {
@@ -54,6 +74,11 @@ variable "ec2_instance_type" {
 # SSH / Key 설정
 ############################################
 
+variable "key_name" {
+  description = "EC2 Key Pair name"
+  default     = "pposiraegi-key"
+}
+
 variable "ssh_public_key_path" {
   description = "Path to SSH public key"
   default     = "~/.ssh/id_ed25519.pub"
@@ -64,7 +89,65 @@ variable "ssh_public_key_path" {
 ############################################
 
 variable "my_ip" {
-  description = "Your public IP for SSH access (CIDR 형식)"
+  description = "Your public IP for SSH access (CIDR 형식, 예: 1.2.3.4/32)"
+}
+
+############################################
+# 앱 포트 설정
+############################################
+
+variable "app_port" {
+  description = "Backend application port"
+  default     = 8080
+}
+
+############################################
+# RDS 설정
+############################################
+
+variable "db_port" {
+  description = "Database port (PostgreSQL)"
+  default     = 5432
+}
+
+variable "db_instance_class" {
+  description = "RDS instance class"
+  default     = "db.t3.micro"
+}
+
+variable "db_username" {
+  description = "RDS master username"
+  default     = "admin"
+}
+
+variable "db_password" {
+  description = "RDS master password"
+  sensitive   = true
+}
+
+############################################
+# 도메인 설정
+############################################
+
+variable "domain_name" {
+  description = "Route53에 등록된 도메인명 (예: pposiraegi.com)"
+}
+
+############################################
+# S3 설정
+############################################
+
+variable "frontend_bucket_name" {
+  description = "프론트엔드 S3 버킷명 (전역 유일)"
+}
+
+############################################
+# 보안 설정
+############################################
+
+variable "cloudfront_secret" {
+  description = "CloudFront → ALB 커스텀 헤더 시크릿 값"
+  sensitive   = true
 }
 
 ############################################
