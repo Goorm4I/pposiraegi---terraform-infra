@@ -35,7 +35,7 @@ services:
     environment:
       JWT_SECRET: "${jwt_secret}"
       CORS_ALLOWED_ORIGINS: "${cors_allowed_origins}"
-      SPRING_PROFILES_ACTIVE: "dev"
+      SPRING_PROFILES_ACTIVE: "prod"
 EOF
 
 chown -R ec2-user:ec2-user /home/ec2-user/app
