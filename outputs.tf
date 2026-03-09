@@ -1,15 +1,29 @@
+output "cloudfront_url" {
+  description = "프론트엔드 접속 URL (CloudFront)"
+  value       = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+}
+
 output "alb_dns" {
-  value = aws_lb.alb.dns_name
+  description = "백엔드 ALB DNS (API 직접 접근용)"
+  value       = "http://${aws_lb.alb.dns_name}"
 }
 
-output "bastion_ip" {
-  value = aws_instance.bastion.public_ip
+output "backend_public_ip" {
+  description = "백엔드 EC2 퍼블릭 IP (SSH 접근용)"
+  value       = aws_instance.backend.public_ip
 }
 
-output "backend_private_ip" {
-  value = aws_instance.backend.private_ip
+output "s3_bucket_name" {
+  description = "프론트엔드 S3 버킷명 (빌드 파일 업로드용)"
+  value       = aws_s3_bucket.frontend.bucket
 }
 
-output "rds_endpoint" {
-  value = aws_db_instance.db.endpoint
+output "ssh_command" {
+  description = "EC2 SSH 접속 명령어"
+  value       = "ssh -i ~/.ssh/id_ed25519 ec2-user@${aws_instance.backend.public_ip}"
+}
+
+output "frontend_deploy_command" {
+  description = "프론트엔드 S3 배포 명령어"
+  value       = "aws s3 sync ./build s3://${aws_s3_bucket.frontend.bucket} --profile goorm --delete"
 }

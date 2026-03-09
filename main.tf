@@ -1,87 +1,82 @@
+###############################################################
+# Provider
+###############################################################
 provider "aws" {
-  region = var.region
+  region  = var.region
+  profile = var.aws_profile
 }
 
-############################
-# Data: AZ
-############################
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
+  }
+}
+
+###############################################################
+# Data
+###############################################################
 data "aws_availability_zones" "available" {}
 
-############################
+###############################################################
 # VPC
-############################
+###############################################################
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
   enable_dns_hostnames = true
 
-  tags = { Name = "infra-vpc" }
+  tags = { Name = "${var.project_name}-vpc" }
 }
 
-############################
-# IGW
-############################
+###############################################################
+# Internet Gateway
+###############################################################
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
-  tags   = { Name = "infra-igw" }
+
+  tags = { Name = "${var.project_name}-igw" }
 }
 
-############################
-# Subnets
-############################
-
+###############################################################
+# Public Subnets (ALB은 2개 AZ 필요)
+###############################################################
 resource "aws_subnet" "public_a" {
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = var.public_subnet_a
+  cidr_block              = var.public_subnet_a_cidr
   availability_zone       = data.aws_availability_zones.available.names[0]
   map_public_ip_on_launch = true
+
+  tags = { Name = "${var.project_name}-public-a" }
 }
 
 resource "aws_subnet" "public_b" {
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = var.public_subnet_b
+  cidr_block              = var.public_subnet_b_cidr
   availability_zone       = data.aws_availability_zones.available.names[1]
   map_public_ip_on_launch = true
+
+  tags = { Name = "${var.project_name}-public-b" }
 }
 
-resource "aws_subnet" "public_c" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = var.public_subnet_c
-  availability_zone       = data.aws_availability_zones.available.names[0]
-  map_public_ip_on_launch = true
-}
-
-resource "aws_subnet" "public_d" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = var.public_subnet_d
-  availability_zone       = data.aws_availability_zones.available.names[1]
-  map_public_ip_on_launch = true
-}
-
-resource "aws_subnet" "private_a" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = var.private_subnet_a
-  availability_zone = data.aws_availability_zones.available.names[0]
-}
-
-resource "aws_subnet" "private_b" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = var.private_subnet_b
-  availability_zone = data.aws_availability_zones.available.names[1]
-}
-
-############################
-# Route Tables
-############################
-
+###############################################################
+# Public Route Table
+###############################################################
 resource "aws_route_table" "public_rt" {
   vpc_id = aws_vpc.main.id
-}
 
-resource "aws_route" "public_internet" {
-  route_table_id         = aws_route_table.public_rt.id
-  destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = aws_internet_gateway.igw.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.igw.id
+  }
+
+  tags = { Name = "${var.project_name}-public-rt" }
 }
 
 resource "aws_route_table_association" "public_a" {
@@ -94,36 +89,15 @@ resource "aws_route_table_association" "public_b" {
   route_table_id = aws_route_table.public_rt.id
 }
 
-resource "aws_route_table_association" "public_c" {
-  subnet_id      = aws_subnet.public_c.id
-  route_table_id = aws_route_table.public_rt.id
-}
-
-resource "aws_route_table_association" "public_d" {
-  subnet_id      = aws_subnet.public_d.id
-  route_table_id = aws_route_table.public_rt.id
-}
-
-resource "aws_route_table" "private_rt" {
-  vpc_id = aws_vpc.main.id
-}
-
-resource "aws_route_table_association" "private_a" {
-  subnet_id      = aws_subnet.private_a.id
-  route_table_id = aws_route_table.private_rt.id
-}
-
-resource "aws_route_table_association" "private_b" {
-  subnet_id      = aws_subnet.private_b.id
-  route_table_id = aws_route_table.private_rt.id
-}
-
-############################
+###############################################################
 # Security Groups
-############################
+###############################################################
 
+# ALB: 인터넷 → 80
 resource "aws_security_group" "alb_sg" {
-  vpc_id = aws_vpc.main.id
+  vpc_id      = aws_vpc.main.id
+  name        = "${var.project_name}-alb-sg"
+  description = "ALB security group"
 
   ingress {
     from_port   = 80
@@ -138,10 +112,22 @@ resource "aws_security_group" "alb_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = { Name = "${var.project_name}-alb-sg" }
 }
 
-resource "aws_security_group" "bastion_sg" {
-  vpc_id = aws_vpc.main.id
+# Backend EC2: ALB → 8080, SSH → my_ip
+resource "aws_security_group" "backend_sg" {
+  vpc_id      = aws_vpc.main.id
+  name        = "${var.project_name}-backend-sg"
+  description = "Backend EC2 security group"
+
+  ingress {
+    from_port       = 8080
+    to_port         = 8080
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
+  }
 
   ingress {
     from_port   = 22
@@ -156,94 +142,86 @@ resource "aws_security_group" "bastion_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = { Name = "${var.project_name}-backend-sg" }
 }
 
-resource "aws_security_group" "app_sg" {
-  vpc_id = aws_vpc.main.id
-
-  ingress {
-    from_port       = var.app_port
-    to_port         = var.app_port
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb_sg.id]
-  }
-
-  ingress {
-    from_port       = 22
-    to_port         = 22
-    protocol        = "tcp"
-    security_groups = [aws_security_group.bastion_sg.id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-resource "aws_security_group" "rds_sg" {
-  vpc_id = aws_vpc.main.id
-
-  ingress {
-    from_port       = var.db_port
-    to_port         = var.db_port
-    protocol        = "tcp"
-    security_groups = [aws_security_group.app_sg.id]
-  }
-}
-
-############################
+###############################################################
 # Key Pair
-############################
-
+###############################################################
 resource "aws_key_pair" "main_key" {
-  key_name   = var.key_name
+  key_name   = "${var.project_name}-key"
   public_key = file(var.ssh_public_key_path)
 }
 
-############################
-# EC2
-############################
-
-resource "aws_instance" "bastion" {
-  ami                         = var.ec2_ami
-  instance_type               = var.ec2_instance_type
-  subnet_id                   = aws_subnet.public_c.id
-  vpc_security_group_ids      = [aws_security_group.bastion_sg.id]
-  associate_public_ip_address = true
-  key_name                    = aws_key_pair.main_key.key_name
+###############################################################
+# S3 (프론트엔드 정적 호스팅) - CloudFront보다 먼저 선언
+###############################################################
+resource "random_id" "suffix" {
+  byte_length = 4
 }
 
-resource "aws_instance" "backend" {
-  ami                    = var.ec2_ami
-  instance_type          = var.ec2_instance_type
-  subnet_id              = aws_subnet.private_a.id
-  vpc_security_group_ids = [aws_security_group.app_sg.id]
-  key_name               = aws_key_pair.main_key.key_name
+resource "aws_s3_bucket" "frontend" {
+  bucket        = "${var.project_name}-frontend-${random_id.suffix.hex}"
+  force_destroy = true
+
+  tags = { Name = "${var.project_name}-frontend" }
 }
 
-############################
+resource "aws_s3_bucket_public_access_block" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_website_configuration" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+
+  index_document { suffix = "index.html" }
+  error_document { key    = "index.html" }
+}
+
+###############################################################
+# CloudFront OAC
+###############################################################
+resource "aws_cloudfront_origin_access_control" "frontend_oac" {
+  name                              = "${var.project_name}-oac"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
+###############################################################
 # ALB
-############################
-
+###############################################################
 resource "aws_lb" "alb" {
+  name               = "${var.project_name}-alb"
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb_sg.id]
   subnets            = [aws_subnet.public_a.id, aws_subnet.public_b.id]
+
+  tags = { Name = "${var.project_name}-alb" }
 }
 
-resource "aws_lb_target_group" "tg" {
-  port     = var.app_port
+resource "aws_lb_target_group" "backend_tg" {
+  name     = "${var.project_name}-tg"
+  port     = 8080
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
-}
 
-resource "aws_lb_target_group_attachment" "backend" {
-  target_group_arn = aws_lb_target_group.tg.arn
-  target_id        = aws_instance.backend.id
-  port             = var.app_port
+  health_check {
+    path                = "/v3/api-docs"
+    interval            = 30
+    timeout             = 10
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    matcher             = "200-499"
+  }
+
+  tags = { Name = "${var.project_name}-tg" }
 }
 
 resource "aws_lb_listener" "http" {
@@ -253,45 +231,150 @@ resource "aws_lb_listener" "http" {
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.tg.arn
+    target_group_arn = aws_lb_target_group.backend_tg.arn
   }
 }
 
-############################
-# RDS
-############################
+###############################################################
+# CloudFront Distribution
+###############################################################
+resource "aws_cloudfront_distribution" "frontend" {
+  enabled             = true
+  default_root_object = "index.html"
+  price_class         = "PriceClass_All"
 
-resource "aws_db_subnet_group" "rds" {
-  subnet_ids = [aws_subnet.private_a.id, aws_subnet.private_b.id]
+  # S3 Origin (프론트엔드)
+  origin {
+    domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
+    origin_id                = "s3-frontend"
+    origin_access_control_id = aws_cloudfront_origin_access_control.frontend_oac.id
+  }
+
+  # ALB Origin (백엔드 API)
+  origin {
+    domain_name = aws_lb.alb.dns_name
+    origin_id   = "alb-backend"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  # /api/* → ALB (백엔드)
+  ordered_cache_behavior {
+    path_pattern           = "/api/*"
+    target_origin_id       = "alb-backend"
+    viewer_protocol_policy = "allow-all"
+    allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods         = ["GET", "HEAD"]
+
+    forwarded_values {
+      query_string = true
+      headers      = ["Authorization", "Content-Type", "Origin", "Accept"]
+      cookies { forward = "none" }
+    }
+
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 0
+  }
+
+  # /* → S3 (프론트엔드)
+  default_cache_behavior {
+    target_origin_id       = "s3-frontend"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+
+    forwarded_values {
+      query_string = false
+      cookies { forward = "none" }
+    }
+
+    min_ttl     = 0
+    default_ttl = 3600
+    max_ttl     = 86400
+  }
+
+  # SPA 라우팅: 403/404 → index.html
+  custom_error_response {
+    error_code         = 403
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+
+  custom_error_response {
+    error_code         = 404
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+
+  restrictions {
+    geo_restriction { restriction_type = "none" }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+
+  tags = { Name = "${var.project_name}-cf" }
 }
 
-resource "aws_db_instance" "db" {
-  engine                 = "mysql"
-  instance_class         = var.db_instance_class
-  allocated_storage      = 20
-  username               = var.db_username
-  password               = var.db_password
-  multi_az               = true
-  db_subnet_group_name   = aws_db_subnet_group.rds.name
-  vpc_security_group_ids = [aws_security_group.rds_sg.id]
-  skip_final_snapshot    = true
+###############################################################
+# S3 Bucket Policy (CloudFront OAC 접근 허용)
+###############################################################
+resource "aws_s3_bucket_policy" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "cloudfront.amazonaws.com" }
+      Action    = "s3:GetObject"
+      Resource  = "${aws_s3_bucket.frontend.arn}/*"
+      Condition = {
+        StringEquals = {
+          "AWS:SourceArn" = aws_cloudfront_distribution.frontend.arn
+        }
+      }
+    }]
+  })
 }
 
-############################################################
-# NAT Gateway (현재 비활성 - 필요 시 주석 해제)
-############################################################
+###############################################################
+# Backend EC2 (docker-compose: Spring Boot + PostgreSQL + Redis)
+###############################################################
+resource "aws_instance" "backend" {
+  ami                         = var.ec2_ami
+  instance_type               = var.ec2_instance_type
+  subnet_id                   = aws_subnet.public_a.id
+  vpc_security_group_ids      = [aws_security_group.backend_sg.id]
+  key_name                    = aws_key_pair.main_key.key_name
+  associate_public_ip_address = true
 
-# resource "aws_eip" "nat_eip" {
-#   domain = "vpc"
-# }
+  user_data = templatefile("${path.module}/user_data.sh", {
+    github_repo          = var.github_repo
+    jwt_secret           = var.jwt_secret
+    cors_allowed_origins = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+  })
 
-# resource "aws_nat_gateway" "nat" {
-#   allocation_id = aws_eip.nat_eip.id
-#   subnet_id     = aws_subnet.public_d.id
-# }
+  root_block_device {
+    volume_size = 20
+    volume_type = "gp3"
+  }
 
-# resource "aws_route" "private_nat" {
-#   route_table_id         = aws_route_table.private_rt.id
-#   destination_cidr_block = "0.0.0.0/0"
-#   nat_gateway_id         = aws_nat_gateway.nat.id
-# }
+  tags = { Name = "${var.project_name}-backend" }
+}
+
+###############################################################
+# ALB Target Group Attachment (EC2 등록)
+###############################################################
+resource "aws_lb_target_group_attachment" "backend" {
+  target_group_arn = aws_lb_target_group.backend_tg.arn
+  target_id        = aws_instance.backend.id
+  port             = 8080
+}

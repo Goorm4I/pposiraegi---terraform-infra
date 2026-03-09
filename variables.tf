@@ -2,126 +2,81 @@
 # AWS 기본 설정
 ############################################
 
-# AWS 리전
+variable "aws_profile" {
+  description = "AWS CLI profile name"
+  default     = "goorm"
+}
+
 variable "region" {
   description = "AWS region"
+  default     = "ap-southeast-2"
+}
+
+variable "project_name" {
+  description = "Project name prefix for resource naming"
+  default     = "pposiraegi"
 }
 
 ############################################
 # VPC 네트워크 설정
 ############################################
 
-# VPC CIDR
 variable "vpc_cidr" {
   description = "VPC CIDR block"
+  default     = "10.0.0.0/16"
 }
 
-############################################
-# Public Subnets
-############################################
-
-# Public Subnet A
-variable "public_subnet_a" {
-  description = "Public subnet A CIDR"
+variable "public_subnet_a_cidr" {
+  description = "Public subnet A CIDR (AZ-a)"
+  default     = "10.0.1.0/24"
 }
 
-# Public Subnet B
-variable "public_subnet_b" {
-  description = "Public subnet B CIDR"
-}
-
-# Public Subnet C
-variable "public_subnet_c" {
-  description = "Public subnet C CIDR"
-}
-
-# Public Subnet D
-variable "public_subnet_d" {
-  description = "Public subnet D CIDR"
-}
-
-############################################
-# Private Subnets
-############################################
-
-# Private Subnet A
-variable "private_subnet_a" {
-  description = "Private subnet A CIDR"
-}
-
-# Private Subnet B
-variable "private_subnet_b" {
-  description = "Private subnet B CIDR"
+variable "public_subnet_b_cidr" {
+  description = "Public subnet B CIDR (AZ-b)"
+  default     = "10.0.2.0/24"
 }
 
 ############################################
 # EC2 설정
 ############################################
 
-# EC2 AMI
 variable "ec2_ami" {
-  description = "AMI for EC2 instances"
+  description = "AMI for EC2 (Amazon Linux 2023, ap-southeast-2)"
+  default     = "ami-0ac4101c751eae35f"
 }
 
-# EC2 Instance Type
 variable "ec2_instance_type" {
   description = "EC2 instance type"
+  default     = "t3.medium"
 }
 
 ############################################
 # SSH / Key 설정
 ############################################
 
-# SSH public key 경로
 variable "ssh_public_key_path" {
   description = "Path to SSH public key"
-}
-
-# AWS Key Pair 이름
-variable "key_name" {
-  description = "AWS key pair name"
+  default     = "~/.ssh/id_ed25519.pub"
 }
 
 ############################################
 # 접근 제어
 ############################################
 
-# Bastion SSH 접근 허용 IP
 variable "my_ip" {
-  description = "Your public IP for SSH access"
+  description = "Your public IP for SSH access (CIDR 형식)"
 }
 
 ############################################
-# Application 설정
+# 애플리케이션 설정
 ############################################
 
-# Backend Application Port
-variable "app_port" {
-  description = "Application port"
+variable "github_repo" {
+  description = "GitHub repo URL to clone on EC2"
+  default     = "https://github.com/Goorm4I/pposiraegi-ecommerce.git"
 }
 
-############################################
-# Database 설정
-############################################
-
-# DB Port
-variable "db_port" {
-  description = "Database port"
-  default     = 3306
-}
-
-# RDS Instance Class
-variable "db_instance_class" {
-  description = "RDS instance class"
-}
-
-# RDS Username
-variable "db_username" {
-  description = "Database username"
-}
-
-# RDS Password
-variable "db_password" {
-  description = "Database password"
+variable "jwt_secret" {
+  description = "JWT secret key for Spring Boot"
   sensitive   = true
 }
