@@ -21,6 +21,12 @@ curl -SL "https://github.com/docker/compose/releases/latest/download/docker-comp
   -o /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
 
+# Docker Buildx 설치 (docker-compose build에 필요)
+mkdir -p ~/.docker/cli-plugins
+curl -SL "https://github.com/docker/buildx/releases/download/v0.17.1/buildx-v0.17.1.linux-amd64" \
+  -o ~/.docker/cli-plugins/docker-buildx
+chmod +x ~/.docker/cli-plugins/docker-buildx
+
 echo "[$(date)] Docker 설치 완료"
 
 # 레포 클론
@@ -42,6 +48,8 @@ services:
       SPRING_DATASOURCE_URL: "jdbc:postgresql://${db_host}:5432/ecommerce"
       SPRING_DATASOURCE_USERNAME: "${db_username}"
       SPRING_DATASOURCE_PASSWORD: "${db_password}"
+      TZ: "UTC"
+      JAVA_OPTS: "-Xms512m -Xmx512m -Duser.timezone=UTC -Djava.security.egd=file:/dev/./urandom"
   db:
     profiles: ["local"]
   redis:
