@@ -32,3 +32,13 @@ output "elasticache_endpoint" {
   description = "ElastiCache Redis 엔드포인트"
   value       = aws_elasticache_cluster.redis.cache_nodes[0].address
 }
+
+output "rds_endpoint" {
+  description = "RDS PostgreSQL 엔드포인트"
+  value       = aws_db_instance.postgres.address
+}
+
+output "rds_port" {
+  description = "RDS PostgreSQL 포트"
+  value       = aws_db_instance.postgres.port
+}
