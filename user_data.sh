@@ -32,10 +32,20 @@ cd app
 cat > /home/ec2-user/app/docker-compose.override.yml <<EOF
 services:
   backend:
+    depends_on: {}
     environment:
       JWT_SECRET: "${jwt_secret}"
       CORS_ALLOWED_ORIGINS: "${cors_allowed_origins}"
       SPRING_PROFILES_ACTIVE: "prod"
+      SPRING_DATA_REDIS_HOST: "${redis_host}"
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://${db_host}:5432/ecommerce"
+      SPRING_DATASOURCE_USERNAME: "${db_username}"
+      SPRING_DATASOURCE_PASSWORD: "${db_password}"
+  db:
+    profiles: ["local"]
+  redis:
+    profiles: ["local"]
 EOF
 
 chown -R ec2-user:ec2-user /home/ec2-user/app

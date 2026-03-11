@@ -27,3 +27,18 @@ output "frontend_deploy_command" {
   description = "프론트엔드 S3 배포 명령어"
   value       = "aws s3 sync ./build s3://${aws_s3_bucket.frontend.bucket} --profile goorm --delete"
 }
+
+output "elasticache_endpoint" {
+  description = "ElastiCache Redis 엔드포인트"
+  value       = aws_elasticache_cluster.redis.cache_nodes[0].address
+}
+
+output "rds_endpoint" {
+  description = "RDS PostgreSQL 엔드포인트"
+  value       = aws_db_instance.postgres.address
+}
+
+output "rds_port" {
+  description = "RDS PostgreSQL 포트"
+  value       = aws_db_instance.postgres.port
+}
