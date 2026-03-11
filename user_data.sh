@@ -32,6 +32,7 @@ cd app
 cat > /home/ec2-user/app/docker-compose.override.yml <<EOF
 services:
   backend:
+    depends_on: {}
     environment:
       JWT_SECRET: "${jwt_secret}"
       CORS_ALLOWED_ORIGINS: "${cors_allowed_origins}"
