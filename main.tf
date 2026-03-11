@@ -93,6 +93,29 @@ resource "aws_route_table_association" "public_b" {
 # Security Groups
 ###############################################################
 
+# Redis (ElastiCache): backend_sg → 6379
+resource "aws_security_group" "redis_sg" {
+  vpc_id      = aws_vpc.main.id
+  name        = "${var.project_name}-redis-sg"
+  description = "ElastiCache Redis security group"
+
+  ingress {
+    from_port       = 6379
+    to_port         = 6379
+    protocol        = "tcp"
+    security_groups = [aws_security_group.backend_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${var.project_name}-redis-sg" }
+}
+
 # ALB: 인터넷 → 80
 resource "aws_security_group" "alb_sg" {
   vpc_id      = aws_vpc.main.id
@@ -360,6 +383,7 @@ resource "aws_instance" "backend" {
     github_repo          = var.github_repo
     jwt_secret           = var.jwt_secret
     cors_allowed_origins = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+    redis_host           = aws_elasticache_cluster.redis.cache_nodes[0].address
   })
 
   root_block_device {
@@ -368,6 +392,27 @@ resource "aws_instance" "backend" {
   }
 
   tags = { Name = "${var.project_name}-backend" }
+}
+
+###############################################################
+# ElastiCache (Redis) - EC2 내부 Redis 대체
+###############################################################
+resource "aws_elasticache_subnet_group" "redis" {
+  name       = "${var.project_name}-redis-subnet"
+  subnet_ids = [aws_subnet.public_a.id, aws_subnet.public_b.id]
+}
+
+resource "aws_elasticache_cluster" "redis" {
+  cluster_id           = "${var.project_name}-redis"
+  engine               = "redis"
+  node_type            = "cache.t3.micro"
+  num_cache_nodes      = 1
+  parameter_group_name = "default.redis7"
+  port                 = 6379
+  subnet_group_name    = aws_elasticache_subnet_group.redis.name
+  security_group_ids   = [aws_security_group.redis_sg.id]
+
+  tags = { Name = "${var.project_name}-redis" }
 }
 
 ###############################################################

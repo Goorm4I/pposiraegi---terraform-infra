@@ -36,6 +36,8 @@ services:
       JWT_SECRET: "${jwt_secret}"
       CORS_ALLOWED_ORIGINS: "${cors_allowed_origins}"
       SPRING_PROFILES_ACTIVE: "prod"
+      SPRING_DATA_REDIS_HOST: "${redis_host}"
+      SPRING_DATA_REDIS_PORT: "6379"
 EOF
 
 chown -R ec2-user:ec2-user /home/ec2-user/app
