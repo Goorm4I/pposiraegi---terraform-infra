@@ -26,6 +26,9 @@ variable "vpc_cidr" {
   default     = "10.0.0.0/16"
 }
 
+############################################
+# Public Subnet 설정
+############################################
 variable "public_subnet_a_cidr" {
   description = "Public subnet A CIDR (AZ-a)"
   default     = "10.0.1.0/24"
@@ -34,6 +37,20 @@ variable "public_subnet_a_cidr" {
 variable "public_subnet_b_cidr" {
   description = "Public subnet B CIDR (AZ-b)"
   default     = "10.0.2.0/24"
+}
+
+############################################
+# Private Subnet 설정
+############################################
+
+variable "private_subnet_a_cidr" {
+  description = "Private subnet A CIDR (RDS / ElastiCache용)"
+  default     = "10.0.11.0/24"
+}
+
+variable "private_subnet_b_cidr" {
+  description = "Private subnet B CIDR (RDS / ElastiCache Multi-AZ용)"
+  default     = "10.0.12.0/24"
 }
 
 ############################################

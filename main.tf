@@ -66,6 +66,25 @@ resource "aws_subnet" "public_b" {
 }
 
 ###############################################################
+# Private Subnets (RDS / ElastiCache용)
+###############################################################
+resource "aws_subnet" "private_a" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.private_subnet_a_cidr
+  availability_zone = data.aws_availability_zones.available.names[0]
+
+  tags = { Name = "${var.project_name}-private-a" }
+}
+
+resource "aws_subnet" "private_b" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.private_subnet_b_cidr
+  availability_zone = data.aws_availability_zones.available.names[1]
+
+  tags = { Name = "${var.project_name}-private-b" }
+}
+
+###############################################################
 # Public Route Table
 ###############################################################
 resource "aws_route_table" "public_rt" {
@@ -87,6 +106,24 @@ resource "aws_route_table_association" "public_a" {
 resource "aws_route_table_association" "public_b" {
   subnet_id      = aws_subnet.public_b.id
   route_table_id = aws_route_table.public_rt.id
+}
+
+###############################################################
+# Private Route Table
+###############################################################
+resource "aws_route_table" "private_rt" {
+  vpc_id = aws_vpc.main.id
+  tags   = { Name = "${var.project_name}-private-rt" }
+}
+
+resource "aws_route_table_association" "private_a" {
+  subnet_id      = aws_subnet.private_a.id
+  route_table_id = aws_route_table.private_rt.id
+}
+
+resource "aws_route_table_association" "private_b" {
+  subnet_id      = aws_subnet.private_b.id
+  route_table_id = aws_route_table.private_rt.id
 }
 
 ###############################################################
@@ -398,7 +435,7 @@ resource "aws_security_group" "rds_sg" {
 ###############################################################
 resource "aws_db_subnet_group" "rds" {
   name       = "${var.project_name}-rds-subnet"
-  subnet_ids = [aws_subnet.public_a.id, aws_subnet.public_b.id]
+  subnet_ids = [aws_subnet.private_a.id, aws_subnet.private_b.id]
 }
 
 resource "aws_db_instance" "postgres" {
@@ -481,7 +518,7 @@ resource "aws_instance" "backend" {
 ###############################################################
 resource "aws_elasticache_subnet_group" "redis" {
   name       = "${var.project_name}-redis-subnet"
-  subnet_ids = [aws_subnet.public_a.id, aws_subnet.public_b.id]
+  subnet_ids = [aws_subnet.private_a.id, aws_subnet.private_b.id]
 }
 
 resource "aws_elasticache_cluster" "redis" {
