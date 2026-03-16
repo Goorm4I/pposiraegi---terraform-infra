@@ -21,6 +21,12 @@ curl -SL "https://github.com/docker/compose/releases/latest/download/docker-comp
   -o /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
 
+# Docker Buildx 설치 (docker-compose build에 필요)
+mkdir -p ~/.docker/cli-plugins
+curl -SL "https://github.com/docker/buildx/releases/download/v0.17.1/buildx-v0.17.1.linux-amd64" \
+  -o ~/.docker/cli-plugins/docker-buildx
+chmod +x ~/.docker/cli-plugins/docker-buildx
+
 echo "[$(date)] Docker 설치 완료"
 
 # 레포 클론
@@ -32,10 +38,22 @@ cd app
 cat > /home/ec2-user/app/docker-compose.override.yml <<EOF
 services:
   backend:
+    depends_on: {}
     environment:
       JWT_SECRET: "${jwt_secret}"
       CORS_ALLOWED_ORIGINS: "${cors_allowed_origins}"
       SPRING_PROFILES_ACTIVE: "prod"
+      SPRING_DATA_REDIS_HOST: "${redis_host}"
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://${db_host}:5432/ecommerce"
+      SPRING_DATASOURCE_USERNAME: "${db_username}"
+      SPRING_DATASOURCE_PASSWORD: "${db_password}"
+      TZ: "UTC"
+      JAVA_OPTS: "-Xms512m -Xmx512m -Duser.timezone=UTC -Djava.security.egd=file:/dev/./urandom"
+  db:
+    profiles: ["local"]
+  redis:
+    profiles: ["local"]
 EOF
 
 chown -R ec2-user:ec2-user /home/ec2-user/app

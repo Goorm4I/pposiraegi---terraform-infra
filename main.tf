@@ -93,6 +93,29 @@ resource "aws_route_table_association" "public_b" {
 # Security Groups
 ###############################################################
 
+# Redis (ElastiCache): backend_sg → 6379
+resource "aws_security_group" "redis_sg" {
+  vpc_id      = aws_vpc.main.id
+  name        = "${var.project_name}-redis-sg"
+  description = "ElastiCache Redis security group"
+
+  ingress {
+    from_port       = 6379
+    to_port         = 6379
+    protocol        = "tcp"
+    security_groups = [aws_security_group.backend_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${var.project_name}-redis-sg" }
+}
+
 # ALB: 인터넷 → 80
 resource "aws_security_group" "alb_sg" {
   vpc_id      = aws_vpc.main.id
@@ -346,7 +369,85 @@ resource "aws_s3_bucket_policy" "frontend" {
 }
 
 ###############################################################
-# Backend EC2 (docker-compose: Spring Boot + PostgreSQL + Redis)
+# RDS Security Group
+###############################################################
+resource "aws_security_group" "rds_sg" {
+  vpc_id      = aws_vpc.main.id
+  name        = "${var.project_name}-rds-sg"
+  description = "RDS PostgreSQL security group"
+
+  ingress {
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.backend_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${var.project_name}-rds-sg" }
+}
+
+###############################################################
+# RDS PostgreSQL
+###############################################################
+resource "aws_db_subnet_group" "rds" {
+  name       = "${var.project_name}-rds-subnet"
+  subnet_ids = [aws_subnet.public_a.id, aws_subnet.public_b.id]
+}
+
+resource "aws_db_instance" "postgres" {
+  identifier             = "${var.project_name}-db"
+  engine                 = "postgres"
+  engine_version         = "15"
+  instance_class         = "db.t3.micro"
+  allocated_storage      = 20
+  storage_type           = "gp2"
+  db_name                = "ecommerce"
+  username               = var.db_username
+  password               = var.db_password
+  db_subnet_group_name   = aws_db_subnet_group.rds.name
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+  publicly_accessible    = false
+  skip_final_snapshot    = true
+  backup_retention_period = 1
+
+  tags = { Name = "${var.project_name}-db" }
+}
+
+###############################################################
+# IAM Instance Profile (SSM 접근 - 수동 배포 및 추후 CI/CD 대비)
+###############################################################
+resource "aws_iam_role" "ec2_role" {
+  name = "${var.project_name}-ec2-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ec2_ssm" {
+  role       = aws_iam_role.ec2_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "${var.project_name}-ec2-profile"
+  role = aws_iam_role.ec2_role.name
+}
+
+###############################################################
+# Backend EC2 (docker-compose: Spring Boot)
 ###############################################################
 resource "aws_instance" "backend" {
   ami                         = var.ec2_ami
@@ -355,11 +456,16 @@ resource "aws_instance" "backend" {
   vpc_security_group_ids      = [aws_security_group.backend_sg.id]
   key_name                    = aws_key_pair.main_key.key_name
   associate_public_ip_address = true
+  iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
 
   user_data = templatefile("${path.module}/user_data.sh", {
     github_repo          = var.github_repo
     jwt_secret           = var.jwt_secret
     cors_allowed_origins = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+    redis_host           = aws_elasticache_cluster.redis.cache_nodes[0].address
+    db_host              = aws_db_instance.postgres.address
+    db_username          = var.db_username
+    db_password          = var.db_password
   })
 
   root_block_device {
@@ -368,6 +474,27 @@ resource "aws_instance" "backend" {
   }
 
   tags = { Name = "${var.project_name}-backend" }
+}
+
+###############################################################
+# ElastiCache (Redis) - EC2 내부 Redis 대체
+###############################################################
+resource "aws_elasticache_subnet_group" "redis" {
+  name       = "${var.project_name}-redis-subnet"
+  subnet_ids = [aws_subnet.public_a.id, aws_subnet.public_b.id]
+}
+
+resource "aws_elasticache_cluster" "redis" {
+  cluster_id           = "${var.project_name}-redis"
+  engine               = "redis"
+  node_type            = "cache.t3.micro"
+  num_cache_nodes      = 1
+  parameter_group_name = "default.redis7"
+  port                 = 6379
+  subnet_group_name    = aws_elasticache_subnet_group.redis.name
+  security_group_ids   = [aws_security_group.redis_sg.id]
+
+  tags = { Name = "${var.project_name}-redis" }
 }
 
 ###############################################################

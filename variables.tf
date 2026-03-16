@@ -80,3 +80,17 @@ variable "jwt_secret" {
   description = "JWT secret key for Spring Boot"
   sensitive   = true
 }
+
+############################################
+# RDS 설정
+############################################
+
+variable "db_username" {
+  description = "RDS master username"
+  default     = "pposiraegi"
+}
+
+variable "db_password" {
+  description = "RDS master password"
+  sensitive   = true
+}
