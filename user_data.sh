@@ -34,8 +34,12 @@ cd /home/ec2-user
 git clone ${github_repo} app
 cd app
 
-# docker-compose.yml 환경변수 오버라이드
-cat > /home/ec2-user/app/docker-compose.override.yml <<EOF
+# EC2 환경용 docker-compose 설정 오버라이드
+# - RDS/ElastiCache 연결 정보 환경변수 주입
+# - 로컬용 db/redis 컨테이너 비활성화 (profiles: local)
+# - docker-compose.local.yml은 Docker Compose가 자동으로 읽지 않음
+#   (로컬 실행 시에만 -f 옵션으로 명시적으로 포함)
+cat > /home/ec2-user/app/docker-compose.local.yml <<EOF
 services:
   backend:
     depends_on: {}
