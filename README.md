@@ -2,18 +2,17 @@
 
 ## 📌 Architecture Overview
 
-Users는 Route 53을 통해 도메인(pposiragi.cloud)으로 접근하며, CloudFront가 요청을 라우팅한다.  
+Users는 CloudFront를 통해 접근하며, 요청을 라우팅한다.  
 정적 프론트엔드 파일은 CloudFront → S3(OAC)로 서빙되고,  
-API 요청은 CloudFront → IGW → ALB → Private Subnet의 Backend EC2로 전달된다.  
-Backend EC2는 Private Subnet의 RDS(MySQL)와 통신한다.  
-개발자는 Bastion Host를 통해 Private EC2에 SSH로 접근한다.
+API 요청은 CloudFront → IGW → ALB → Public Subnet의 Backend EC2로 전달된다.  
+Backend EC2는 RDS PostgreSQL(Private Subnet) 및 ElastiCache Redis(Private Subnet)와 통신한다.  
+개발자는 AWS SSM Session Manager를 통해 EC2에 SSH 키 없이 접근한다.
 
 ---
 
 ## Architecture Diagram
 
-<img width="1693" height="1292" alt="aws-architecture-v4 drawio" src="https://github.com/user-attachments/assets/11af8902-b8db-4ec9-a35e-b2fafd03bce5" />
-
+<img width="1601" height="1281" alt="다이어그램v5 drawio" src="https://github.com/user-attachments/assets/59fbffa5-6c48-416a-9dc2-1bc279fb30dc" />
 
 ---
 
@@ -24,16 +23,18 @@ Backend EC2는 Private Subnet의 RDS(MySQL)와 통신한다.
 | 리소스 | 개수 | 설명 |
 |--------|------|------|
 | VPC | 1 | 10.0.0.0/16 |
-| Public Subnet | 4 | ALB(x2), Bastion(x1), NAT용(x1, 비활성) |
-| Private Subnet | 2 | Backend EC2(x1), RDS Multi-AZ(x1) |
+| Public Subnet | 2 | ALB(x2 AZ), Backend EC2 |
+| Private Subnet | 2 | RDS(x1), ElastiCache(x1) |
 | Internet Gateway | 1 | Public 서브넷 인터넷 연결 |
 | NAT Gateway | 0 | 현재 비활성 (주석 해제 시 활성화) |
-| EC2 | 2 | Bastion, Backend |
+| EC2 | 1 | Backend (Spring Boot) |
 | ALB | 1 | Backend EC2 앞단 로드밸런서 |
-| RDS (MySQL) | 1 | Multi-AZ, Private 서브넷 |
+| RDS (PostgreSQL) | 1 | Private 서브넷, db.t3.micro |
+| ElastiCache (Redis) | 1 | Private 서브넷, cache.t3.micro |
 | S3 | 1 | 프론트엔드 정적 파일 호스팅 |
 | CloudFront | 1 | CDN, S3+ALB 통합 진입점 |
-| Security Group | 4 | ALB / Bastion / App / RDS |
+| IAM Role | 1 | EC2 SSM 접근용 Instance Profile |
+| Security Group | 4 | ALB / Backend / RDS / Redis |
 
 ---
 
@@ -43,12 +44,17 @@ Backend EC2는 Private Subnet의 RDS(MySQL)와 통신한다.
   │
   ▼
 CloudFront
-  ├─ /api/*  ──────────────► ALB ──► Backend EC2 (Private)
-  │                                        │
-  │                                        ▼
-  │                                    RDS MySQL (Private)
+  ├─ /api/*  ──────────────► IGW ──► ALB ──► Backend EC2 (Public Subnet)
+  │                                                  │              │
+  │                                                  ▼              ▼
+  │                                          RDS PostgreSQL   ElastiCache Redis
+  │                                           (Private Subnet)  (Private Subnet)
+  └─ /*  ──────────────────► S3 (프론트엔드 정적 파일, OAC)
+
+개발자
   │
-  └─ /*  ──────────────────► S3 (프론트엔드 정적 파일)
+  ▼
+AWS SSM Session Manager ──► Backend EC2 (SSH 키 없이 접근)
 ```
 
 ---
@@ -57,33 +63,28 @@ CloudFront
 ```
 인터넷 (0.0.0.0/0)
   │
-  │ 80 (HTTP) - CloudFront IP 대역만 허용
+  │ 80 (HTTP)
   ▼
 [alb-sg] ALB
   │
   │ 8080 (API) - ALB에서 오는 것만
   ▼
-[app-sg] Backend EC2 ◄── 22 (SSH) - Bastion에서만
-  │
-  │ 5432 (PostgreSQL) - EC2에서 오는 것만
-  ▼
-[rds-sg] RDS
-  
-[redis-sg] Redis ◄── 6379 - EC2에서만
-  
-[bastion-sg] Bastion ◄── 22 (SSH) - 내 IP만
+[backend-sg] Backend EC2 ◄── 22 (SSH) - my_ip만
+  │                 │
+  │ 5432            │ 6379
+  ▼                 ▼
+[rds-sg] RDS    [redis-sg] ElastiCache Redis
 ```
-
 
 ### 🔐 Security Group 규칙
 
 | SG 이름 | 인바운드 | 허용 출처 |
 |---------|---------|----------|
 | alb-sg | 80 (HTTP) | 0.0.0.0/0 |
-| bastion-sg | 22 (SSH) | 내 IP만 |
-| app-sg | 8080 (API) | alb-sg |
-| app-sg | 22 (SSH) | bastion-sg |
-| rds-sg | 3306 (MySQL) | app-sg |
+| backend-sg | 8080 (API) | alb-sg |
+| backend-sg | 22 (SSH) | my_ip |
+| rds-sg | 5432 (PostgreSQL) | backend-sg |
+| redis-sg | 6379 (Redis) | backend-sg |
 
 ---
 
@@ -95,7 +96,8 @@ CloudFront
 | 백엔드 API URL | `http://<alb-dns>/api/v1/...` | ALB DNS (`terraform output alb_dns`) |
 | S3 버킷명 | `pposiraegi-frontend-xxxx` | 프론트 빌드 파일 업로드 대상 |
 | RDS 엔드포인트 | Private 접근만 가능 | `terraform output rds_endpoint` |
-| Bastion IP | Public IP | `terraform output bastion_ip` |
+| ElastiCache 엔드포인트 | Private 접근만 가능 | `terraform output elasticache_endpoint` |
+| Backend IP | Public IP | `terraform output backend_public_ip` |
 
 ---
 
@@ -116,7 +118,9 @@ aws s3 sync ./build s3://$(terraform output -raw s3_bucket_name) --profile goorm
 **3. Backend EC2**
 - `terraform apply` 시 `user_data.sh` 자동 실행
 - GitHub 레포 클론 → `docker-compose up -d` 자동 실행
+- RDS / ElastiCache 연결 정보는 환경변수로 자동 주입
 - CORS 허용 오리진은 CloudFront 도메인으로 자동 설정
+- EC2 접근은 AWS SSM Session Manager 사용 (SSH 키 불필요)
 
 **4. 인프라 삭제**
 ```bash
@@ -133,3 +137,15 @@ terraform destroy
 | `variables.tf` | 변수 선언 및 기본값 |
 | `outputs.tf` | 배포 후 출력값 (URL, IP 등) |
 | `user_data.sh` | EC2 부팅 시 자동 실행 스크립트 |
+
+---
+
+### 🔄 주요 아키텍처 변경 이력
+
+| 변경 항목 | 이전 | 현재 |
+|----------|------|------|
+| EC2 내부 DB | PostgreSQL 컨테이너 | RDS PostgreSQL (managed) |
+| EC2 내부 캐시 | Redis 컨테이너 | ElastiCache Redis (managed) |
+| 개발자 접근 방식 | Bastion Host → SSH | AWS SSM Session Manager |
+| RDS 엔진 | MySQL | PostgreSQL 15 |
+| EC2 위치 | Private Subnet | Public Subnet |
