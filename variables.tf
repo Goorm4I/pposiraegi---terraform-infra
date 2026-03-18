@@ -59,7 +59,7 @@ variable "private_subnet_b_cidr" {
 
 variable "ec2_ami" {
   description = "AMI for EC2 (Amazon Linux 2023, ap-southeast-2)"
-  default     = "ami-0ac4101c751eae35f"
+  default     = "ami-0c9c942bd7bf113a2"  # Amazon Linux 2023
 }
 
 variable "ec2_instance_type" {
